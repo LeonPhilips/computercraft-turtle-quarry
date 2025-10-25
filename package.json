@@ -4,10 +4,8 @@
   "description": "Mining Turtle Software",
   "main": "src/main.ts",
   "scripts": {
-    "build": "tstl && npm run autopublish",
-    "watch": "tsc-watch --noClear -p ./tsconfig.json --onSuccess \"npm run autopublish\" --compiler ./node_modules/typescript-to-lua/dist/tstl.js",
-    "autopublish": "/bin/bash ./publish.sh --auto",
-    "publish": "/bin/bash ./publish.sh"
+    "build": "tstl",
+    "watch": "tsc-watch --noClear -p ./tsconfig.json --compiler ./node_modules/typescript-to-lua/dist/tstl.js"
   },
   "author": "Armin Linzbauer <armin.linzbauer@gmail.com>",
   "license": "MIT",

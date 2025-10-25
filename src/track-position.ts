@@ -1,179 +1,167 @@
-import {DigEvent, MoveDirection, MoveEvent, QuarryFinishedEvent, TurnDirection, TurnEvent} from "./quarry";
-
 type Vector3d = { x: number, y: number, z: number };
+enum Direction {NORTH, EAST, SOUTH, WEST};
 
-enum Orientation {NORTH, EAST, SOUTH, WEST}
 
-let currentPosition: Vector3d = {x: 0, y: 0, z: 0};
-let currentOrientation: Orientation = Orientation.NORTH;
+const RIGHT_TURN_MAPPING = {
+    [Direction.NORTH]: Direction.EAST,
+    [Direction.EAST]: Direction.SOUTH,
+    [Direction.SOUTH]: Direction.WEST,
+    [Direction.WEST]: Direction.NORTH,
+};
 
-function turnRight(): void {
-    turtle.turnRight();
-    onTurn(new TurnEvent(TurnDirection.RIGHT));
-}
+const LEFT_TURN_MAPPING = {
+    [Direction.NORTH]: Direction.WEST,
+    [Direction.WEST]: Direction.SOUTH,
+    [Direction.SOUTH]: Direction.EAST,
+    [Direction.EAST]: Direction.NORTH,
+};
 
-function turnLeft(): void {
-    turtle.turnLeft();
-    onTurn(new TurnEvent(TurnDirection.LEFT));
-}
+export class Controller{
 
-function moveUp(): void {
-    while (turtle.getFuelLevel() == 0) {
-        print("Out of fuel.")
-        os.sleep(2)
-    }
-    turtle.up();
-    updateCurrentPosition(MoveDirection.UP);
-}
+    position: Vector3d = {x: 0, y: 0, z: 0};
+    direction: Direction = Direction.NORTH;
+    max_fuel: number;
+    min_fuel: number;
 
-function moveDown(): void {
-    while (turtle.getFuelLevel() == 0) {
-        print("Out of fuel.")
-        os.sleep(2)
-    }
-    turtle.down();
-    updateCurrentPosition(MoveDirection.DOWN);
-}
-
-function moveForward(): void {
-    while (turtle.getFuelLevel() == 0) {
-        print("Out of fuel.")
-        os.sleep(2)
-    }
-    turtle.forward();
-    updateCurrentPosition(MoveDirection.FORWARD);
-}
-
-function inventoryFull(): boolean {
-    return turtle.getItemCount(16) > 0;
-}
-
-function returnToStart(): void {
-    while (currentOrientation != Orientation.SOUTH) {
-        turnRight();
+    constructor(max_fuel: number, dig_size: Vector3d){
+        this.max_fuel = max_fuel
+        this.min_fuel = (dig_size.x * dig_size.z * 2) + dig_size.y
     }
 
-    while (currentPosition.z != 0) {
-        moveUp();
+    reset(){
+        this.position = {x: 0, y: 0, z: 0};
+        this.direction = Direction.NORTH;
     }
 
-    while (currentPosition.y != 0) {
-        moveForward();
-    }
-
-    if (currentPosition.x > 0) {
-        turnLeft();
-        while (currentPosition.x != 0) {
-            moveForward();
+    fuel_check(){
+        const required_fuel_level = this.position.x + this.position.y + this.position.z
+        if(this.get_fuel_level() - 10 < required_fuel_level){
+            this.home()
         }
-        turnRight();
     }
-}
 
-function dropItems(): void {
-    for (let i = 1; i <= 16; i++) {
-        turtle.select(i);
-        turtle.drop(turtle.getItemCount(i));
+    store(){
+
     }
-    turtle.select(1);
-}
 
-function returnToPreviousPosition(returnPosition: Vector3d, returnOrientation: Orientation): void {
-    turnRight();
-    turnRight();
+    up(){
+        this.position.y++;
+        turtle.up();
+        this.store();
+    }
 
-    if (returnPosition.x > 0) {
-        turnLeft();
-        while (currentPosition.x != returnPosition.x) {
-            moveForward();
+    down(){
+        this.position.y--;
+        turtle.down();
+        this.store();
+    }
+
+    turnLeft(){
+        this.direction = LEFT_TURN_MAPPING[this.direction]
+        turtle.turnLeft()
+        this.store();
+    }
+
+    turnRight(){
+        this.direction = RIGHT_TURN_MAPPING[this.direction]
+        turtle.turnRight()
+        this.store();
+    }
+
+    forward(){
+        switch (this.direction) {
+            case Direction.NORTH:
+                this.position.y++;
+                break;
+            case Direction.SOUTH:
+                this.position.y--;
+                break;
+            case Direction.EAST:
+                this.position.x--;
+                break;
+            case Direction.WEST:
+                this.position.x++;
+                break;
         }
-        turnRight();
+        turtle.forward()
+        this.store()
     }
 
-    while (currentPosition.y != returnPosition.y) {
-        moveForward();
+    face(direction: Direction){
+        if (this.direction == direction){
+            // Already facing the right direction
+            return;
+        }else if (RIGHT_TURN_MAPPING[this.direction] == direction) {
+            this.turnRight();
+        }else if (LEFT_TURN_MAPPING[this.direction] == direction) {
+            this.turnLeft();
+        }else{
+            // Turn right twice if it's behind us
+            this.turnRight();
+            this.turnRight();
+        }
     }
 
-    while (currentPosition.z != returnPosition.z) {
-        moveDown();
+    get_fuel_level(): number {
+        const fuel_level = turtle.getFuelLevel()
+        // Handle infinite fuel turtles.
+        if(fuel_level == "unlimited"){
+            return this.max_fuel
+        }
+        return fuel_level as number
     }
 
-    while (currentOrientation != returnOrientation) {
-        turnRight();
+    home(){
+        this.goto({x: 0, y: 0, z:0})
+        // Drop inventory
+        this.face(Direction.SOUTH)
+        for (let i = 1; i <= 16; i++) {
+            turtle.select(i);
+            turtle.drop(turtle.getItemCount(i));
+        }
+        turtle.select(1);
+
+        // Refuel if needed
+        do{
+            const condition = () => this.get_fuel_level() < math.min(this.max_fuel, turtle.getFuelLimit()) - 1000
+            while(condition()){
+                if (turtle.getItemCount(1) == 0){
+                    const has_items = turtle.suckUp()[0]
+                    if (!has_items){
+                        break;
+                    }
+                }
+                turtle.refuel(1)
+            }
+            if(this.get_fuel_level() < this.min_fuel){
+                os.sleep(1)
+                print("Waiting for fuel...")
+            }
+        }while(this.get_fuel_level() < this.min_fuel)
+        
     }
-}
 
-function updateCurrentPosition(direction: MoveDirection): void {
-    if (direction == MoveDirection.UP) {
-        ++currentPosition.z;
-        return;
-    }
-
-    if (direction == MoveDirection.DOWN) {
-        --currentPosition.z;
-        return;
-    }
-
-    switch (currentOrientation) {
-        case Orientation.NORTH:
-            ++currentPosition.y;
-            break;
-        case Orientation.SOUTH:
-            --currentPosition.y;
-            break;
-        case Orientation.EAST:
-            --currentPosition.x;
-            break;
-        case Orientation.WEST:
-            ++currentPosition.x;
-            break;
-    }
-}
-
-function transitionOrientation(direction: TurnDirection, transition: [left: Orientation, right: Orientation]) {
-    switch (direction) {
-        case TurnDirection.LEFT:
-            currentOrientation = transition[0];
-            break;
-        case TurnDirection.RIGHT:
-            currentOrientation = transition[1];
-            break;
-    }
-}
-
-export function onMove(e: MoveEvent) {
-    updateCurrentPosition(e.direction);
-}
-
-export function onDig(e: DigEvent) {
-    if (inventoryFull()) {
-        const returnPosition = {...currentPosition};
-        const returnOrientation = currentOrientation;
-        returnToStart();
-        dropItems();
-        returnToPreviousPosition(returnPosition, returnOrientation);
-    }
-}
-
-export function onQuarryFinished(e: QuarryFinishedEvent) {
-    returnToStart();
-    dropItems();
-}
-
-export function onTurn(e: TurnEvent) {
-    switch (currentOrientation) {
-        case Orientation.NORTH:
-            transitionOrientation(e.direction, [Orientation.WEST, Orientation.EAST]);
-            break;
-        case Orientation.EAST:
-            transitionOrientation(e.direction, [Orientation.NORTH, Orientation.SOUTH]);
-            break;
-        case Orientation.SOUTH:
-            transitionOrientation(e.direction, [Orientation.EAST, Orientation.WEST]);
-            break;
-        case Orientation.WEST:
-            transitionOrientation(e.direction, [Orientation.SOUTH, Orientation.NORTH]);
-            break;
+    goto(target: Vector3d){
+        while(this.position.y < target.y){
+            this.up()
+        }
+        while(this.position.y > target.y){
+            this.down()
+        }
+        if (this.position.x != target.x){
+            const target_direction_x = target.x > this.position.x ? Direction.WEST : Direction.EAST;
+            this.face(target_direction_x)
+            while (this.position.x != target.x){
+                this.forward()
+            }
+        }
+        if (this.position.z != target.z){
+            const target_direction_z = target.z > this.position.z ? Direction.NORTH : Direction.SOUTH;
+            this.face(target_direction_z)
+            while (this.position.z != target.z){
+                this.forward()
+            }
+        }
     }
 }
 
