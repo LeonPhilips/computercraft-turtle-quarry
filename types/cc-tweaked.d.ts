@@ -6,6 +6,10 @@ interface TextUtils {
     serialize(t: any, opts?: any): string;
 }
 
+declare namespace os {
+    export function sleep(seconds: number): void;
+}
+
 
 declare function write(args: any);
 declare namespace turtle {
@@ -14,6 +18,8 @@ declare namespace turtle {
     export function select(slot: number): void;
 
     export function getItemCount(slot: number): number;
+
+    export function getFuelLevel(): number;
 
     export function drop(amount: number): void;
 

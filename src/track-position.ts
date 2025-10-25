@@ -18,16 +18,28 @@ function turnLeft(): void {
 }
 
 function moveUp(): void {
+    while (turtle.getFuelLevel() == 0) {
+        print("Out of fuel.")
+        os.sleep(2)
+    }
     turtle.up();
     updateCurrentPosition(MoveDirection.UP);
 }
 
 function moveDown(): void {
+    while (turtle.getFuelLevel() == 0) {
+        print("Out of fuel.")
+        os.sleep(2)
+    }
     turtle.down();
     updateCurrentPosition(MoveDirection.DOWN);
 }
 
 function moveForward(): void {
+    while (turtle.getFuelLevel() == 0) {
+        print("Out of fuel.")
+        os.sleep(2)
+    }
     turtle.forward();
     updateCurrentPosition(MoveDirection.FORWARD);
 }

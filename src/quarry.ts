@@ -110,6 +110,10 @@ export function quarry(width: number, length: number, depth: number) {
     while (depth > 1) {
         digPlane(width, length, startRight);
         dispatchPlaneFinishedEvent(new PlaneFinishedEvent(depth - 1, initialDepth));
+        while (turtle.getFuelLevel() == 0) {
+            print("Out of fuel.")
+            os.sleep(2)
+        }
         turtle.down();
         const e = new MoveEvent(MoveDirection.DOWN);
         dispatchMoveEvent(e);
@@ -151,6 +155,10 @@ function move() {
         const digEvent = new DigEvent(blockInfo.name);
         turtle.dig();
         dispatchDigEvent(digEvent);
+    }
+    while (turtle.getFuelLevel() == 0) {
+        print("Out of fuel.")
+        os.sleep(2)
     }
     turtle.forward();
     const e = new MoveEvent(MoveDirection.FORWARD);
