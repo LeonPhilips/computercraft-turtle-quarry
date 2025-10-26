@@ -18,7 +18,7 @@ export function parseArgs(definition: ArgumentDefinition, ...argv: Array<string>
         }
 
         if (arg === "--version" || arg === "-V") {
-            print(getName(definition));
+            textutils.pagedPrint(getName(definition));
             return false;
         }
     }
@@ -114,11 +114,11 @@ function wrapWithBrackets(text: string, required: boolean = false) {
 
 function printGroup(args: Argument[], title: string, padLength: number, expectsValue: boolean = false): void {
     if (args.length > 0) {
-        print(`${title}:`);
+        textutils.pagedPrint(`${title}:`);
         for (let arg of args) {
             let paddedName = getOptionName(arg, expectsValue).padStart(padLength);
             let description = arg.description ? ` - ${arg.description}` : "";
-            print(`${paddedName}${description}`);
+            textutils.pagedPrint(`${paddedName}${description}`);
         }
     }
 }
@@ -143,10 +143,10 @@ function getPositionalArgsHelp(args: Argument[]) {
 }
 
 function printHelpText(definition: ArgumentDefinition): void {
-    write(getName(definition));
+    textutils.pagedPrint(getName(definition));
 
     if (definition.description) {
-        print(` - ${definition.description}`);
+        textutils.pagedPrint(` - ${definition.description}`);
     }
 
     const posArgs = getPositionalArgsHelp(definition.positional);
@@ -157,7 +157,7 @@ function printHelpText(definition: ArgumentDefinition): void {
         " [options]" :
         "";
 
-    print(`\nSynopsis: ${definition.command}${optionsPlaceholder}${posArgsText}\n`);
+    textutils.pagedPrint(`\nSynopsis: ${definition.command}${optionsPlaceholder}${posArgsText}\n`);
 
     const maxLength = getMaxArgNameLength(
         definition.args,
