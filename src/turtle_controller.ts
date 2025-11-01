@@ -1,4 +1,4 @@
-import { ArgumentList } from "./argument-definitions";
+import { Job } from "./argument-definitions";
 
 export type Vector3d = { x: number, y: number, z: number };
 export type Vector2d = { x: number, z: number };
@@ -25,17 +25,18 @@ const LEFT_TURN_MAPPING = {
 };
 
 class LayerProgress{
-    job: ArgumentList;
+    job: Job;
 
-    constructor(job: ArgumentList){
+    constructor(job: Job){
         this.job = job;
     }
 
     *quarry_generator(controller: Controller): Generator<[number, Vector3d, () => void]>{
-        const layers = Number(controller.memory.progress.job.depth) / 3;
+        const layers = controller.memory.progress.job.get_depth() / 3;
         const position: Vector3d = {x: 0, y: 0, z: 0};
 
-        for(let layer_num=Number(this.job.completed_layers); layer_num<layers; layer_num++){
+        print(`Doing: ${this.job.get_completed_layers()} ${layers} ${controller.memory.progress.job.get_depth()}`)
+        for(let layer_num=Number(this.job.get_completed_layers()); layer_num<layers; layer_num++){
             position.y = (layer_num * -3);
             position.x = 0;
             position.z = 0;
@@ -52,14 +53,14 @@ class LayerProgress{
                 position.z = layer_pos.z;
                 yield [progress, position, layer_action];
             }
-            this.job.completed_layers = (layer_num + 1).toString();
+            this.job.set_completed_layers(layer_num + 1);
             controller.store();
         }
     }
 
     *layer_generator(controller: Controller): Generator<[number, Vector2d, () => void]>{
-        const length = Number(controller.memory.progress.job.length);
-        const width = Number(controller.memory.progress.job.width);
+        const length = Number(controller.memory.progress.job.get_length());
+        const width = Number(controller.memory.progress.job.get_width());
 
         let vec: Vector2d = {x: 0, z: 0};
         let steps = 0;
@@ -128,7 +129,7 @@ class LayerProgress{
         }
 
         // Back to start
-        for(let x=0; x<length; x++){
+        for(let x=0; x<length-1; x++){
             vec.x--;
             yield [(++steps / (length*width)), vec, () => {
                 controller.face(Direction.WEST);
@@ -145,7 +146,7 @@ class ControllerMemory{
     position: Vector3d = {x: 0, y: 0, z: 0};
     direction: Direction = Direction.NORTH;
 
-    constructor(job: ArgumentList){
+    constructor(job: Job){
         this.progress = new LayerProgress(job);
     }
 };
@@ -157,9 +158,9 @@ export class Controller{
     max_fuel: number;
     min_fuel: number;
 
-    constructor(args: ArgumentList){
-        this.max_fuel = Number(args.max_fuel);
-        this.min_fuel = (Number(args.length) * Number(args.width) * 2) + Number(args.depth);
+    constructor(args: Job){
+        this.max_fuel = args.get_max_fuel();
+        this.min_fuel = (args.get_length() * args.get_width() * 2) + args.get_depth();
         this.memory = new ControllerMemory(args);
     }
 
@@ -195,16 +196,18 @@ export class Controller{
     load(){
         const [handle, _err] = fs.open("quarry_memory", "r");
         if (handle == undefined){
+            print("Starting fresh...");
             return;
         }
         const data = handle.readAll();
         if (data == undefined){
+            print("Old data is corrupt.");
             this.reset();
         }else{
             const loaded = textutils.unserialize(data);
             this.memory.direction = loaded.direction;
             this.memory.position = loaded.position;
-            this.memory.progress.job = loaded.progress.job;
+            this.memory.progress.job.accept(loaded.progress.job);
         }
     }
 
@@ -361,7 +364,7 @@ export class Controller{
             if(num_items > 0){
                 turtle.select(i);
                 while (!turtle.drop(num_items)[0]){
-                    os.sleep(1.0)
+                    os.sleep(1.0);
                 }
             }
         }
