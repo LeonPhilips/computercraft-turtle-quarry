@@ -34,24 +34,25 @@ class LayerProgress{
     *quarry_generator(controller: Controller): Generator<[number, Vector3d, () => void]>{
         const layers = controller.memory.progress.job.get_depth() / 3;
         const position: Vector3d = {x: 0, y: 0, z: 0};
-
-        print(`Doing: ${this.job.get_completed_layers()} ${layers} ${controller.memory.progress.job.get_depth()}`)
         for(let layer_num=Number(this.job.get_completed_layers()); layer_num<layers; layer_num++){
             position.y = (layer_num * -3);
             position.x = 0;
             position.z = 0;
             yield [layer_num / layers, position, () => {
-                controller.goto({x: position.x, y: position.y + 2, z: position.z});
+                controller.goto({x: position.x, y: position.y + 2, z: position.z}, true, true);
                 turtle.digDown();
-                controller.down();
+                controller.down(true, true);
                 turtle.digDown();
-                controller.down();
+                controller.down(true, true);
             }];
             for(let [layer_progress, layer_pos, layer_action] of this.layer_generator(controller)){
                 const progress = ((layer_num + (layer_progress / layers)) / layers);
                 position.x = layer_pos.x;
                 position.z = layer_pos.z;
-                yield [progress, position, layer_action];
+                yield [progress, position, () => {
+                    layer_action();
+                    controller.progress_percent = progress;
+                }];
             }
             this.job.set_completed_layers(layer_num + 1);
             controller.store();
@@ -71,7 +72,7 @@ class LayerProgress{
             yield [(++steps / (length*width)), vec, () => {
                 controller.face(Direction.SOUTH);
                 controller.digAll();
-                controller.forward();
+                controller.forward(true, true);
             }];
         }
 
@@ -81,7 +82,7 @@ class LayerProgress{
             yield [(++steps / (length*width)), vec, () => {
                 controller.face(Direction.EAST);
                 controller.digAll();
-                controller.forward();
+                controller.forward(true, true);
             }];
             // North
             for(let z=0; z<length-1; z++){
@@ -89,7 +90,7 @@ class LayerProgress{
                 yield [(++steps / (length*width)), vec, () => {
                     controller.face(Direction.NORTH);
                     controller.digAll();
-                    controller.forward();
+                    controller.forward(true, true);
                 }];
             }
             // Turn right
@@ -97,7 +98,7 @@ class LayerProgress{
             yield [(++steps / (length*width)), vec, () => {
                 controller.face(Direction.EAST);
                 controller.digAll();
-                controller.forward();
+                controller.forward(true, true);
             }];
 
             //South
@@ -106,7 +107,7 @@ class LayerProgress{
                 yield [(++steps / (length*width)), vec, () => {
                     controller.face(Direction.SOUTH);
                     controller.digAll();
-                    controller.forward();
+                    controller.forward(true, true);
                 }];
             }
             
@@ -116,7 +117,7 @@ class LayerProgress{
         yield [(++steps / (length*width)), vec, () => {
             controller.face(Direction.EAST);
             controller.digAll();
-            controller.forward();
+            controller.forward(true, true);
         }];
 
         for(let z=0; z<length; z++){
@@ -124,7 +125,7 @@ class LayerProgress{
             yield [(++steps / (length*width)), vec, () => {
                 controller.face(Direction.NORTH);
                 controller.digAll();
-                controller.forward();
+                controller.forward(true, true);
             }];
         }
 
@@ -134,7 +135,7 @@ class LayerProgress{
             yield [(++steps / (length*width)), vec, () => {
                 controller.face(Direction.WEST);
                 controller.digAll();
-                controller.forward();
+                controller.forward(true, true);
             }];
         }
 
@@ -158,10 +159,20 @@ export class Controller{
     max_fuel: number;
     min_fuel: number;
 
-    constructor(args: Job){
+    progress_percent: number = 0;
+    public render: () => void;
+
+    constructor(args: Job, renderer_fn: (controller: Controller) => void){
+        this.render = () => renderer_fn(this);
         this.max_fuel = args.get_max_fuel();
         this.min_fuel = (args.get_length() * args.get_width() * 2) + args.get_depth();
         this.memory = new ControllerMemory(args);
+    }
+
+    tell(text: string){
+        this.render();
+        print();
+        print(text);
     }
 
     reset(){
@@ -186,22 +197,22 @@ export class Controller{
         return this.memory.progress.quarry_generator(this);
     }
 
-    fuel_check(){
-        const required_fuel_level = this.memory.position.x + this.memory.position.y + this.memory.position.z;
-        if(this.get_fuel_level() - 10 < required_fuel_level){
-            this.interrupt_home();
+    fuel_check(from_layer: boolean){
+        const required_fuel_level = (this.memory.position.x * this.memory.position.z) + this.memory.position.y;
+        if(this.get_fuel_level() - 10 < required_fuel_level * 2){
+            this.interrupt_home(from_layer);
         }
     }
 
     load(){
         const [handle, _err] = fs.open("quarry_memory", "r");
         if (handle == undefined){
-            print("Starting fresh...");
+            this.tell("Starting fresh...");
             return;
         }
         const data = handle.readAll();
         if (data == undefined){
-            print("Old data is corrupt.");
+            this.tell("Old data is corrupt.");
             this.reset();
         }else{
             const loaded = textutils.unserialize(data);
@@ -221,40 +232,42 @@ export class Controller{
         handle.close();
     }
 
-    up(check_fuel: boolean = true){
+    up(check_fuel: boolean = true, in_layer: boolean){
         if(turtle.detectUp()){
-            print("Can't move up.")
+            this.tell("Can't move up.")
             while(turtle.detectUp()){
                 os.sleep(0.5);
             }
         }
         this.memory.position.y++;
         while(!turtle.up()[0]){
-            print("Could not move up");
+            this.tell("Could not move up");
             os.sleep(1);
         }
         this.store();
+        this.render();
         if(check_fuel){
-            this.fuel_check();
+            this.fuel_check(in_layer);
         }
         return true;
     }
 
-    down(check_fuel: boolean = true){
+    down(check_fuel: boolean = true, in_layer: boolean){
         if(turtle.detectDown()){
-            print("Can't move down.")
+            this.tell("Can't move down.")
             while(turtle.detectDown()){
                 os.sleep(0.5);
             }
         }
         this.memory.position.y--;
         while(!turtle.down()[0]){
-            print("Could not move down");
+            this.tell("Could not move down");
             os.sleep(1);
         }
         this.store();
+        this.render();
         if(check_fuel){
-            this.fuel_check();
+            this.fuel_check(in_layer);
         }
         return true;
     }
@@ -262,16 +275,18 @@ export class Controller{
     turnLeft(){
         this.memory.direction = LEFT_TURN_MAPPING[this.memory.direction]
         this.store();
+        this.render();
         turtle.turnLeft();
     }
 
     turnRight(){
         this.memory.direction = RIGHT_TURN_MAPPING[this.memory.direction]
         this.store();
+        this.render();
         turtle.turnRight();
     }
 
-    forward(check_fuel: boolean = true): boolean {
+    forward(check_fuel: boolean = true, in_layer: boolean): boolean {
         switch (this.memory.direction) {
             case Direction.NORTH:
                 this.memory.position.z--
@@ -287,12 +302,15 @@ export class Controller{
                 break;
         }
         while(!turtle.forward()[0]){
-            print("Could not move forward");
-            turtle.dig();
+            this.tell("Could not move forward");
+            if(peripheral.hasType("forward", "inventory") == false){
+                turtle.dig();
+            }
         }
         this.store();
+        this.render();
         if(check_fuel){
-            this.fuel_check();
+            this.fuel_check(in_layer);
         }
         return true;
     }
@@ -345,13 +363,21 @@ export class Controller{
         }
     }
 
-    home(exit: boolean=true){
-        const max_up_moves = math.min(this.HOME_LOCATION.y - this.memory.position.y, 2);
-        for(let i=0; i<max_up_moves; i++){
-            this.up(false);
+    is_at_pos(target: Vector3d): boolean{
+        return this.memory.position.x == target.x && this.memory.position.y == target.y && this.memory.position.z == target.z
+    }
+
+    home(exit: boolean=true, in_layer: boolean){
+        if(this.is_at_pos(this.HOME_LOCATION) == false){
+            if(in_layer){
+                const max_up_moves = math.min(this.HOME_LOCATION.y - this.memory.position.y, 2);
+                for(let i=0; i<max_up_moves; i++){
+                    this.up(false, false);
+                }
+            }
+            this.goto({x: 0, y: 0, z:0}, false, in_layer);
+            this.goto(this.HOME_LOCATION, false, in_layer);
         }
-        this.goto({x: 0, y: 0, z:0}, false);
-        this.goto(this.HOME_LOCATION, false);
         // Drop inventory
         this.face(Direction.NORTH);
         const err = this.ensure_parked();
@@ -392,21 +418,25 @@ export class Controller{
             }
             if(this.get_fuel_level() < this.min_fuel){
                 os.sleep(1);
-                print("Waiting for fuel...");
+                this.tell("Waiting for fuel...");
             }
         }while(this.get_fuel_level() < this.min_fuel);
         if(exit){
-            this.goto({x: 0, y: 0, z:0}, false);
+            this.goto({x: 0, y: 0, z:0}, false, in_layer);
         }
     }
 
-    interrupt_home(){
+    interrupt_home(in_layer: boolean){
         const current_pos = {x: this.memory.position.x, y: this.memory.position.y, z: this.memory.position.z};
         const current_direction = this.memory.direction;
-        this.home();
-        this.goto({x: current_pos.x, y: current_pos.y+2, z: current_pos.z}, false);
-        this.down();
-        this.down();
+        this.home(true, in_layer);
+        if(in_layer){
+            this.goto({x: current_pos.x, y: current_pos.y+2, z: current_pos.z}, false, in_layer);
+            this.down(true, in_layer);
+            this.down(true, in_layer);
+        }else{
+            this.goto(current_pos, false, in_layer);
+        }
         this.face(current_direction);
     }
 
@@ -415,32 +445,32 @@ export class Controller{
         turtle.digDown();
         turtle.dig();
         if (turtle.getItemDetail(14) != undefined || turtle.getItemDetail(15) != undefined || turtle.getItemDetail(16) != undefined){
-            this.interrupt_home();
+            this.interrupt_home(true);
         }
     }
 
-    goto(target: Vector3d, fuel_check: boolean = false){
+    goto(target: Vector3d, fuel_check: boolean = false, in_layer: boolean){
         if(this.memory.position.y != target.y){
-            this.goto({x: 0, y: this.memory.position.y, z: 0}, false);
+            this.goto({x: 0, y: this.memory.position.y, z: 0}, false, in_layer);
             while(this.memory.position.y < target.y){
-                this.up(fuel_check);
+                this.up(fuel_check, in_layer);
             }
             while(this.memory.position.y > target.y){
-                this.down(fuel_check);
+                this.down(fuel_check, in_layer);
             }
         }
         if (this.memory.position.x != target.x){
             const target_direction_x = target.x > this.memory.position.x ? Direction.EAST : Direction.WEST;
             this.face(target_direction_x);
             while (this.memory.position.x != target.x){
-                this.forward(fuel_check);
+                this.forward(fuel_check, in_layer);
             }
         }
         if (this.memory.position.z != target.z){
             const target_direction_z = target.z > this.memory.position.z ? Direction.SOUTH : Direction.NORTH;
             this.face(target_direction_z);
             while (this.memory.position.z != target.z){
-                this.forward(fuel_check);
+                this.forward(fuel_check, in_layer);
             }
         }
     }
